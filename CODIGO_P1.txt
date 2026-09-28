@@ -21,13 +21,22 @@ CÓMO SE USA ESTE ARCHIVO
 
 # ▶ BLOQUE 1 · Preparar las herramientas (no se cambia nada)
 import re, time, requests, pandas as pd, matplotlib.pyplot as plt
-from IPython.display import display
+pd.set_option("display.width", 200)
 
 RECURSOS = "https://raw.githubusercontent.com/uide-programacion-inteligencia-mercados/recursos-curso/main/"
 AGENTE = {"User-Agent": "ObservatorioUIDE/1.0 (proyecto academico)"}
 PAISES = {"ECU": ("Ecuador", "EC"), "COL": ("Colombia", "CO"), "PER": ("Perú", "PE"), "CHL": ("Chile", "CL"),
           "GTM": ("Guatemala", "GT"), "DOM": ("República Dominicana", "DO"), "MEX": ("México", "MX"),
           "BOL": ("Bolivia", "BO"), "USA": ("Estados Unidos", "US")}
+
+def display(tabla):
+    """Muestra una tabla como texto simple (sin botones ni filtros)."""
+    t = tabla.rename_axis(columns=None)
+    if not isinstance(t.index, pd.RangeIndex):
+        t = t.reset_index()
+    print()
+    print(t.to_string(index=False))
+    print()
 
 def pedir(url, veces=3, espera=15):
     """Pide una página hasta 3 veces, con paciencia creciente. Si no contesta, devuelve None."""
@@ -68,7 +77,8 @@ def traer_banco_mundial(pais_2, indicador, desde):
                   "fuente": "Banco Mundial · respaldo 27-sep-2026"} for x in t.itertuples()]
     datos = pd.DataFrame(filas).sort_values(["grupo", "momento"]).reset_index(drop=True)
     print(f"   {len(datos)} filas · {datos.grupo.nunique()} países · años {datos.momento.min()} a {datos.momento.max()}")
-    print(f"   Para verificar a mano: https://data.worldbank.org/indicator/{indicador}?locations=EC-{PAISES[pais_2][1]}")
+    print(f"   Para verificar a mano (Paso 3), abre este enlace:")
+    print(f"   https://data.worldbank.org/indicator/{indicador}?locations=EC-{PAISES[pais_2][1]}")
     return datos
 
 def precio_en_pagina(html):
@@ -89,17 +99,20 @@ def traer_tia(productos, precios_cliente):
         if precio is not None:
             origen = "Tía · en vivo"
             print(f"✔ {nombre:<34} Tía hoy USD {precio:.2f}")
+            print(f"   {url}")
         elif url in respaldo.index:
             precio = float(respaldo.loc[url, "precio_usd"])
             origen = "Tía · respaldo 27-sep-2026"
             print(f"⚠ {nombre:<34} sin respuesta: uso el respaldo USD {precio:.2f}")
+            print(f"   {url}")
         else:
             print(f"✖ {nombre}: sin precio y sin respaldo. Revisa el enlace."); continue
         filas.append({"grupo": nombre, "momento": "1 · Precio del cliente", "valor": precios_cliente[nombre], "fuente": "Cliente [SIMULADO]"})
         filas.append({"grupo": nombre, "momento": "2 · Tía hoy", "valor": precio, "fuente": origen})
         time.sleep(2)                                    # pausa humana: no molestar a la tienda
     datos = pd.DataFrame(filas)
-    print(f"   {datos.grupo.nunique()} productos comparados. Para verificar a mano, abre los enlaces de tu caso.")
+    print(f"   {datos.grupo.nunique()} productos comparados.")
+    print("   Para verificar a mano (Paso 3): haz clic en uno de los enlaces de arriba y compara el precio de la página con la tabla.")
     return datos
 
 def traer_curso(archivo):
@@ -108,7 +121,8 @@ def traer_curso(archivo):
     t["fuente"] = "Datos del curso [SIMULADO]"
     print(f"✔ Datos recibidos: {t.cliente.iloc[0]} · {t.unidad.iloc[0]}")
     print(f"   {len(t)} filas · {t.grupo.nunique()} grupos · meses {t.momento.min()} a {t.momento.max()}")
-    print(f"   Para verificar a mano: https://github.com/uide-programacion-inteligencia-mercados/recursos-curso/blob/main/{archivo}")
+    print(f"   Para verificar a mano (Paso 3), abre este enlace:")
+    print(f"   https://github.com/uide-programacion-inteligencia-mercados/recursos-curso/blob/main/{archivo}")
     return t[["grupo", "momento", "valor", "fuente"]]
 
 print("✔ Herramientas listas")
