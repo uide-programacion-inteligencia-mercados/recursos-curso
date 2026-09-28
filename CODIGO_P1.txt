@@ -29,16 +29,16 @@ PAISES = {"ECU": ("Ecuador", "EC"), "COL": ("Colombia", "CO"), "PER": ("Perú", 
           "GTM": ("Guatemala", "GT"), "DOM": ("República Dominicana", "DO"), "MEX": ("México", "MX"),
           "BOL": ("Bolivia", "BO"), "USA": ("Estados Unidos", "US")}
 
-def pedir(url, veces=3):
+def pedir(url, veces=3, espera=15):
     """Pide una página hasta 3 veces, con paciencia creciente. Si no contesta, devuelve None."""
     for intento in range(1, veces + 1):
         try:
-            r = requests.get(url, headers=AGENTE, timeout=15)
+            r = requests.get(url, headers=AGENTE, timeout=espera)
             if r.status_code == 200:
                 return r
             print(f"   intento {intento}: la fuente respondió {r.status_code}")
         except Exception as e:
-            print(f"   intento {intento}: no contestó ({type(e).__name__})")
+            print(f"   intento {intento}: la fuente está tardando; el robot sigue intentando…")
         if intento < veces:
             time.sleep(2 * intento)
     return None
@@ -47,7 +47,8 @@ def traer_banco_mundial(pais_2, indicador, desde):
     """Ecuador y otro país, un indicador, desde un año. Si la API falla, usa el respaldo del profesor."""
     url = (f"https://api.worldbank.org/v2/country/ECU;{pais_2}/indicator/{indicador}"
            f"?format=json&date={desde}:2025&per_page=200")
-    r = pedir(url)
+    print("⏳ Pidiendo los datos al Banco Mundial. Puede tardar hasta 1 minuto: no toques nada.")
+    r = pedir(url, veces=2, espera=30)
     filas = []
     if r is not None:
         try:
