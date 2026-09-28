@@ -1,0 +1,192 @@
+===============================================================================
+  CÓDIGO DEL PARCIAL 1 · Taller Colab (práctica) y Examen
+  Programación Aplicada a la Inteligencia de Mercados · UIDE · Juan Carlos Correa
+===============================================================================
+
+CÓMO SE USA ESTE ARCHIVO
+- Tu cuaderno tiene PASOS. Algunos pasos dicen «Pega aquí el BLOQUE …».
+- Copia desde la línea «# ▶ BLOQUE …» hasta la línea «# ■ FIN DEL BLOQUE …».
+  Cópialo SIEMPRE desde este .txt: los espacios del inicio de cada línea importan.
+- Pégalo en la celda de código de ese paso y ejecútala con ▶.
+- Las líneas que terminan en  ◀ CAMBIA  son las únicas que cambias.
+- El BLOQUE 2 tiene tres versiones (2A, 2B, 2C). Usas SOLO la de tu fuente.
+
+    BLOQUE 1  · Preparar las herramientas ............... Paso 1 (igual para todos)
+    BLOQUE 2A · Traer datos del Banco Mundial ........... Paso 2 (si tu fuente es el Banco Mundial)
+    BLOQUE 2B · Traer precios de Tía ..................... Paso 2 (si tu fuente es Tía)
+    BLOQUE 2C · Traer datos del cliente (curso) .......... Paso 2 (si tu fuente son datos del curso)
+    BLOQUE 3  · Analizar: variación, gráfico y alerta .... Paso 4 (igual para todos)
+    BLOQUE 4  · El error a propósito ..................... Paso 6 (igual para todos)
+
+
+# ▶ BLOQUE 1 · Preparar las herramientas (no se cambia nada)
+import re, time, requests, pandas as pd, matplotlib.pyplot as plt
+from IPython.display import display
+
+RECURSOS = "https://raw.githubusercontent.com/uide-programacion-inteligencia-mercados/recursos-curso/main/"
+AGENTE = {"User-Agent": "ObservatorioUIDE/1.0 (proyecto academico)"}
+PAISES = {"ECU": ("Ecuador", "EC"), "COL": ("Colombia", "CO"), "PER": ("Perú", "PE"), "CHL": ("Chile", "CL"),
+          "GTM": ("Guatemala", "GT"), "DOM": ("República Dominicana", "DO"), "MEX": ("México", "MX"),
+          "BOL": ("Bolivia", "BO"), "USA": ("Estados Unidos", "US")}
+
+def pedir(url, veces=3):
+    """Pide una página hasta 3 veces, con paciencia creciente. Si no contesta, devuelve None."""
+    for intento in range(1, veces + 1):
+        try:
+            r = requests.get(url, headers=AGENTE, timeout=15)
+            if r.status_code == 200:
+                return r
+            print(f"   intento {intento}: la fuente respondió {r.status_code}")
+        except Exception as e:
+            print(f"   intento {intento}: no contestó ({type(e).__name__})")
+        if intento < veces:
+            time.sleep(2 * intento)
+    return None
+
+def traer_banco_mundial(pais_2, indicador, desde):
+    """Ecuador y otro país, un indicador, desde un año. Si la API falla, usa el respaldo del profesor."""
+    url = (f"https://api.worldbank.org/v2/country/ECU;{pais_2}/indicator/{indicador}"
+           f"?format=json&date={desde}:2025&per_page=200")
+    r = pedir(url)
+    filas = []
+    if r is not None:
+        try:
+            for d in r.json()[1]:
+                if d["value"] is not None:
+                    filas.append({"grupo": PAISES[d["countryiso3code"]][0], "momento": int(d["date"]),
+                                  "valor": float(d["value"]), "fuente": "Banco Mundial · API en vivo"})
+        except Exception:
+            filas = []
+    if filas:
+        print("✔ Datos recibidos del Banco Mundial (API en vivo)")
+    else:
+        print("⚠ La API no contestó: uso el RESPALDO del profesor (capturado el 27-sep-2026)")
+        t = pd.read_csv(RECURSOS + "respaldo_banco_mundial.csv")
+        t = t[t.pais_iso3.isin(["ECU", pais_2]) & (t.indicador == indicador) & (t.anio >= desde)]
+        filas = [{"grupo": x.pais, "momento": int(x.anio), "valor": float(x.valor),
+                  "fuente": "Banco Mundial · respaldo 27-sep-2026"} for x in t.itertuples()]
+    datos = pd.DataFrame(filas).sort_values(["grupo", "momento"]).reset_index(drop=True)
+    print(f"   {len(datos)} filas · {datos.grupo.nunique()} países · años {datos.momento.min()} a {datos.momento.max()}")
+    print(f"   Para verificar a mano: https://data.worldbank.org/indicator/{indicador}?locations=EC-{PAISES[pais_2][1]}")
+    return datos
+
+def precio_en_pagina(html):
+    """Busca el precio dentro del código de la ficha, de tres maneras."""
+    for patron in (r'product:price:amount" content="([\d.]+)"', r'data-price-amount="([\d.]+)"', r'"price"\s*:\s*"?([\d.]+)'):
+        m = re.search(patron, html)
+        if m:
+            return round(float(m.group(1)), 2)
+    return None
+
+def traer_tia(productos, precios_cliente):
+    """Precio de hoy en Tía frente al precio del cliente. Si una ficha falla, usa el respaldo del profesor."""
+    respaldo = pd.read_csv(RECURSOS + "respaldo_tia.csv").set_index("url")
+    filas = []
+    for nombre, url in productos.items():
+        r = pedir(url, veces=2)
+        precio = precio_en_pagina(r.text) if r is not None else None
+        if precio is not None:
+            origen = "Tía · en vivo"
+            print(f"✔ {nombre:<34} Tía hoy USD {precio:.2f}")
+        elif url in respaldo.index:
+            precio = float(respaldo.loc[url, "precio_usd"])
+            origen = "Tía · respaldo 27-sep-2026"
+            print(f"⚠ {nombre:<34} sin respuesta: uso el respaldo USD {precio:.2f}")
+        else:
+            print(f"✖ {nombre}: sin precio y sin respaldo. Revisa el enlace."); continue
+        filas.append({"grupo": nombre, "momento": "1 · Precio del cliente", "valor": precios_cliente[nombre], "fuente": "Cliente [SIMULADO]"})
+        filas.append({"grupo": nombre, "momento": "2 · Tía hoy", "valor": precio, "fuente": origen})
+        time.sleep(2)                                    # pausa humana: no molestar a la tienda
+    datos = pd.DataFrame(filas)
+    print(f"   {datos.grupo.nunique()} productos comparados. Para verificar a mano, abre los enlaces de tu caso.")
+    return datos
+
+def traer_curso(archivo):
+    """Datos del cliente guardados por el profesor en el repositorio recursos-curso."""
+    t = pd.read_csv(RECURSOS + archivo)
+    t["fuente"] = "Datos del curso [SIMULADO]"
+    print(f"✔ Datos recibidos: {t.cliente.iloc[0]} · {t.unidad.iloc[0]}")
+    print(f"   {len(t)} filas · {t.grupo.nunique()} grupos · meses {t.momento.min()} a {t.momento.max()}")
+    print(f"   Para verificar a mano: https://github.com/uide-programacion-inteligencia-mercados/recursos-curso/blob/main/{archivo}")
+    return t[["grupo", "momento", "valor", "fuente"]]
+
+print("✔ Herramientas listas")
+# ■ FIN DEL BLOQUE 1
+
+
+# ▶ BLOQUE 2A · Traer datos del Banco Mundial
+PAIS_2 = "COL"              # ◀ CAMBIA: el otro país (código de 3 letras)
+INDICADOR = "FP.CPI.TOTL"   # ◀ CAMBIA: el código del indicador de tu caso
+DESDE = 2019                # ◀ CAMBIA: el año desde el que comparas
+
+datos = traer_banco_mundial(PAIS_2, INDICADOR, DESDE)
+display(datos.pivot(index="momento", columns="grupo", values="valor").round(2))
+# ■ FIN DEL BLOQUE 2A
+
+
+# ▶ BLOQUE 2B · Traer precios de Tía
+PRODUCTOS = {               # ◀ CAMBIA: nombre corto y enlace de la ficha de cada producto de tu caso
+    "Arroz Mi Rey 2 kg": "https://www.tia.com.ec/supermercado/comestibles/arroz-y-fideos/arroz-mi-rey-2-kg-257950000.html",
+    "Leche Toni 1 l": "https://www.tia.com.ec/supermercado/lacteos/leches-blancas/leche-toni-tetrabrik-1-l-entera-337906000.html",
+    "Café Nescafé 160 g": "https://www.tia.com.ec/supermercado/comestibles/cafe-y-chocolate-en-polvo/cafe-nescafe-160-g-258247000.html",
+}
+PRECIOS_CLIENTE = {         # ◀ CAMBIA: el precio del cliente para cada producto (mismo nombre corto)
+    "Arroz Mi Rey 2 kg": 3.60,
+    "Leche Toni 1 l": 1.60,
+    "Café Nescafé 160 g": 8.50,
+}
+
+datos = traer_tia(PRODUCTOS, PRECIOS_CLIENTE)
+display(datos.pivot(index="grupo", columns="momento", values="valor"))
+# ■ FIN DEL BLOQUE 2B
+
+
+# ▶ BLOQUE 2C · Traer datos del cliente (curso)
+ARCHIVO = "curso_taller_panaderia.csv"   # ◀ CAMBIA: el archivo de tu caso
+
+datos = traer_curso(ARCHIVO)
+display(datos.pivot(index="momento", columns="grupo", values="valor"))
+# ■ FIN DEL BLOQUE 2C
+
+
+# ▶ BLOQUE 3 · Analizar: cuánto cambió, gráfico y alerta
+UMBRAL = 10                                   # ◀ CAMBIA: la variación (en %) que le importa al cliente
+TITULO = "Escribe aquí el título de tu caso"  # ◀ CAMBIA: el título de tu gráfico
+
+comunes = set.intersection(*[set(d.momento) for _, d in datos.groupby("grupo")])   # solo momentos que tienen todos
+d = datos[datos.momento.isin(comunes)]
+INICIO, FINAL = min(comunes), max(comunes)
+resumen = (d.pivot(index="grupo", columns="momento", values="valor")[[INICIO, FINAL]]
+             .rename(columns={INICIO: "valor_inicial", FINAL: "valor_final"}).rename_axis(columns=None))
+resumen["variacion_pct"] = ((resumen.valor_final / resumen.valor_inicial - 1) * 100).round(1)
+resumen["alerta"] = ["⚠ SUPERA EL UMBRAL" if abs(v) >= UMBRAL else "dentro del umbral" for v in resumen["variacion_pct"]]
+resumen = resumen.reset_index()
+
+print(f"Comparación de «{INICIO}» a «{FINAL}» · umbral ±{UMBRAL} %\n")
+display(resumen.round(2))
+fig, ax = plt.subplots(figsize=(9, 4))
+if d.momento.nunique() > 2:
+    for (g, s), c in zip(d.groupby("grupo"), ["#002C71", "#910048", "#EAAA00", "#002C38"]):
+        ax.plot(s.momento.astype(str), s.valor, marker="o", lw=2, color=c, label=g)
+    ax.legend(frameon=False)
+else:
+    d.pivot(index="grupo", columns="momento", values="valor").plot(kind="bar", ax=ax, rot=0, color=["#002C71", "#910048"])
+    ax.legend(frameon=False, title="")
+ax.set_title(TITULO, loc="left", weight="bold", color="#002C71")
+ax.spines[["top", "right"]].set_visible(False)
+plt.tight_layout(); plt.show()
+for x in resumen.itertuples():
+    print(f"• {x.grupo}: de {x.valor_inicial:,.2f} a {x.valor_final:,.2f} → {x.variacion_pct:+.1f} %  ({x.alerta})")
+if str(FINAL).startswith("2 · Tía"):
+    print("\n  Cómo leerlo: negativo = Tía está MÁS BARATO que el cliente · positivo = Tía está MÁS CARO.")
+print(f"\nFuente: {', '.join(d.fuente.unique())}")
+# ■ FIN DEL BLOQUE 3
+
+
+# ▶ BLOQUE 4 · El error a propósito (Paso 6)
+# Este bloque FALLA a propósito. Lee la última línea roja, encuentra la palabra
+# mal escrita, corrígela y vuelve a ejecutar. Luego explica el error en una línea.
+mayor = resumen.loc[resumen["variacion_pct"].abs().idxmax()]
+print(f"Lo que más cambió: {mayor.grupo} ({mayor['variacion_pct']:+.1f} %)")
+print(resumne)
+# ■ FIN DEL BLOQUE 4
