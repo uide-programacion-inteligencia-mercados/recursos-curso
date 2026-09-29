@@ -92,6 +92,7 @@ def precio_en_pagina(html):
 def traer_tia(productos, precios_cliente):
     """Precio de hoy en Tía frente al precio del cliente. Si una ficha falla, usa el respaldo del profesor."""
     respaldo = pd.read_csv(RECURSOS + "respaldo_tia.csv").set_index("url")
+    print("⏳ Pidiendo los precios a Tía. Suele tardar unos 10 segundos (hasta 2 minutos si la página está lenta): no toques nada.")
     filas = []
     for nombre, url in productos.items():
         r = pedir(url, veces=2)
